@@ -1,0 +1,8 @@
+.vs
+.vscode
+**.tlog
+**.obj
+x64
+.git
+**.sln
+**.vcxproj
