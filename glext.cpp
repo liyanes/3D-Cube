@@ -2,9 +2,15 @@
 #include "err.h"
 #include <Windows.h>
 #include <algorithm>
+#include <iostream>
+#include <sstream>
 
+#pragma warning(disable:26451)
+#pragma warning(disable:6262)
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#pragma warning(default:26451)
+#pragma warning(default:6262)
 #ifdef max
 #undef max
 #endif
@@ -12,6 +18,7 @@
 #undef min
 #endif
 
+using namespace std;
 using namespace glExt;
 using namespace glExt::err;
 using namespace glm;
@@ -89,7 +96,7 @@ void glExt::buffer::setData(signed long long size, const void* data, unsigned us
 	glBufferData(bufferType, size, data, usage);
 	checkError();
 }
-
+#pragma warning(disable:4312)
 void glExt::vertexArray::setVertexAttributes(const attributes& _attr)
 {
 	bind();
@@ -100,29 +107,30 @@ void glExt::vertexArray::setVertexAttributes(const attributes& _attr)
 	}
 	this->_attrs = _attr;
 }
+#pragma warning(default:4312)
 
 void glExt::vertexArray::draw(const GLenum mode)
 {
 	bind();
-	glDrawArrays(mode, 0, size / singleDataLen);
+	glDrawArrays(mode, 0, (int)(size / singleDataLen));
 	checkError();
 }
 
 void glExt::vertexArray::draw(const GLenum mode,const attribute& _attr)
 {
 	bind();
-	glDrawArrays(mode, _attr.offest, size / _attr.stride);
+	glDrawArrays(mode, _attr.offest, (int)(size / _attr.stride));
 	checkError();
 }
 
-void glExt::vertexArray::draw(const GLenum mode, const attribute& _attr, const unsigned long long len)
+void glExt::vertexArray::draw(const GLenum mode, const attribute& _attr, const int len)
 {
 	bind();
 	glDrawArrays(mode, _attr.offest, len);
 	checkError();
 }
 
-void glExt::vertexArray::draw(const GLenum mode, const int offest, const unsigned long long len)
+void glExt::vertexArray::draw(const GLenum mode, const int offest, const int len)
 {
 	bind();
 	glDrawArrays(mode, offest, len);
@@ -132,24 +140,29 @@ void glExt::vertexArray::draw(const GLenum mode, const int offest, const unsigne
 
 static bool initialized = false;
 
-LONG WINAPI TopLevelUnHandledException(_In_ struct _EXCEPTION_POINTERS* ExceptionInfo) {
+LONG WINAPI TopLevelUnHandledException(_In_ struct _EXCEPTION_POINTERS* pExptInfo) {
 #ifdef _DEBUG
 	return EXCEPTION_CONTINUE_SEARCH;
 #else
-	glExt::finialize();
+	wstringstream ss(L"发生未捕获的错误:\n");
+	ss << L"错误号:" << pExptInfo->ExceptionRecord->ExceptionCode << L"\n";
+	ss << L"错误位置:" << pExptInfo->ExceptionRecord->ExceptionAddress << L"\n";
+	ss << L"错误信息" << pExptInfo->ExceptionRecord->ExceptionInformation << L"\n";
+	glExt::finalize();
+	MessageBox(NULL, ss.str().c_str(), L"错误", MB_OK | MB_ICONERROR);
 	return EXCEPTION_EXECUTE_HANDLER;
 #endif
 };
 
-void glExt::initialize() {
+void glExt::initialize(version version) {
 	if (initialized) {
 		throw glInitFailed("已经初始化");
 	}
 	if (glfwInit() == GLFW_FALSE) {
 		throw glInitFailed();
 	}
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, version.major);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, version.minor);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef _MAC
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -157,7 +170,7 @@ void glExt::initialize() {
 	SetUnhandledExceptionFilter(TopLevelUnHandledException);
 	initialized = true;
 }
-void glExt::finialize()
+void glExt::finalize()
 {
 	glfwTerminate();
 	initialized = false;
@@ -223,6 +236,7 @@ void window::_handle_frameBufferSizeCallback(GLFWwindow* window, int width, int 
 static bool gladInitilized = false;
 
 glExt::window::window(int width, int height, const char* title, bool setCurrent, GLFWmonitor* monitor, GLFWwindow* share)
+	:_fullscr_saved()
 {
 	_window = glfwCreateWindow(width, height, title, monitor, share);
 	if (_window == NULL)
@@ -277,13 +291,6 @@ void glExt::textureUnit::active(unsigned index) {
 	if (index >= unitLen()) throw glOutofRange();
 	glActiveTexture(GL_TEXTURE0 + index);
 }
-
-//void glExt::fpsCamera::setEulerAngle(float pitch, float yaw, float roll,float distance, bool useMoveTarget) {
-//	this->setLookWay(
-//		glm::rotate(glm::mat4(1), roll, glm::vec3(0.0f, 0.0f, 1.0f)) * 
-//		(glm::vec4(cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw), 1.0f) 
-//			* distance),useMoveTarget);
-//}
 
 void glExt::fpsCamera::setEulerAngle(float pitch, float yaw,float distance, bool useMoveTarget) {
 	this->setLookWay(glm::vec3(cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw)) * distance,useMoveTarget);
@@ -526,15 +533,8 @@ void glExt::QuatCamera::sorround(float xoffset, float yoffset,glm::vec3 dest)
 
 void QuatCamera::moveVis(float xoffset, float yoffset) {
 	yoffset = -yoffset;
-	//xoffset = -xoffset;
-	//
-	//glm::quat rot1 = getQuatBetweenVecs(glm::vec3(0.0f, 0.0f, 1.0f), normalize(glm::vec3(0.008f * MouseSensitivity * xoffset, 0.008f * MouseSensitivity * yoffset, 1.0f)));
-	//Front = glm::normalize(glm::rotate(rot1, Front));
-	//_right = glm::normalize(glm::cross(Front, worldUp)); // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
-	//_up = glm::normalize(glm::cross(_right, Front));
 
 	setQuatBetweenVecs(Front, Front + glm::cross(Front,_up) * xoffset * MouseSensitivity + _up * yoffset * MouseSensitivity);
-	//setQuatBetweenVecs(Front, Front + glm::vec3((float)xoffset,(float)yoffset,0.0f) * MouseSensitivity);
 	this->_up = _last_quat * _up;
 	_right = _last_quat * _right;
 	Front = glm::cross(_up, _right);

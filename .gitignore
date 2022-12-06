@@ -1,8 +1,11 @@
-.vs
-.vscode
+.vs/
+.vscode/
 **.tlog
 **.obj
-x64
-.git
+x64/
+.git/
 **.sln
 **.vcxproj
+**.user
+**.aps
+**.dgml

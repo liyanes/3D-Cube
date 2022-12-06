@@ -2,7 +2,7 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <vector>
-#include <stb_image.h>
+#include <stb_image.h> 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -18,6 +18,7 @@
 #endif
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
+#pragma warning(disable:26495)
 
 namespace glExt {
 	template <typename T>
@@ -40,6 +41,17 @@ namespace glExt {
 	template <typename _T>
 	struct crood {
 		_T x, y;
+		inline constexpr crood();
+		inline constexpr crood(const crood&);
+		inline constexpr crood(const crood&&);
+		inline constexpr crood(const _T, const _T);
+		inline constexpr bool operator==(const crood<_T>& _right) const noexcept;
+		inline constexpr const crood<_T> operator - () const noexcept;
+		inline constexpr const crood<_T> operator-(const crood<_T>& _right) const noexcept;
+		inline constexpr const crood<_T> operator+(const crood<_T>& _right) const noexcept;
+		
+		inline constexpr const std::enable_if_t<std::is_arithmetic_v<_T>,_T> length() const;
+		inline constexpr const std::enable_if_t<std::is_arithmetic_v<_T>, _T> length2() const;
 	};
 
 	using loopFunc = void (*)(window&);
@@ -115,15 +127,19 @@ namespace glExt {
 		~window();
 	};
 
-	void initialize();
-	void finialize();
+	struct version {
+		unsigned char major;
+		unsigned char minor;
+	};
+	void initialize(version version = {3,3});
+	void finalize();
 	inline void enableDepthTest() { glEnable(GL_DEPTH_TEST); checkError(); };
 	inline void depthTest() { glClear(GL_DEPTH_BUFFER_BIT); checkError(); };
 
 
 	class initializer {
 	public:
-		inline initializer();
+		inline initializer(version version = {3,3});
 		inline ~initializer();
 	};
 
@@ -140,9 +156,15 @@ namespace glExt {
 	protected:
 		void* _data;
 		int width, height, nrChannels;
+		bool useFree = true;
 	public:
 		inline image(const char* filename);
 		inline image(const char* filename, bool flip);
+		inline image(const image& _image);
+		inline image(image&& _image) noexcept;
+
+		inline const image& operator=(const image& _image);
+		inline const image& operator=(image&& _image) noexcept;
 
 		inline const void* getData() const noexcept { return this->_data; };
 		inline void* getData() noexcept { return this->_data; };
@@ -151,7 +173,7 @@ namespace glExt {
 		inline int getHeight() const noexcept  { return height; };
 		inline int getNrChannel() const noexcept { return nrChannels; };
 
-		inline ~image() { stbi_image_free(_data); }
+		inline ~image() { if (useFree) { stbi_image_free(_data); this->useFree = false; } }
 	};
 
 	/// <summary>
@@ -213,7 +235,7 @@ namespace glExt {
 			attach(_frag);
 			link();
 		}
-		inline bool isLinked() { return this->linked; }
+		inline bool isLinked() const noexcept { return this->linked; }
 		
 		void attach(const shader& _shader);
 
@@ -329,8 +351,8 @@ namespace glExt {
 	public:
 		void draw(const GLenum mode);
 		void draw(const GLenum mode,const attribute& _attr);
-		void draw(const GLenum mode,const attribute& _attr, const unsigned long long len);
-		void draw(const GLenum mode, const int offest, const unsigned long long len);
+		void draw(const GLenum mode,const attribute& _attr, const int len);
+		void draw(const GLenum mode, const int offest, const int len);
 
 		inline ~vertexArray() { glDeleteVertexArrays(1, &arrayCode); checkError();};
 	};
@@ -389,13 +411,13 @@ namespace glExt {
 			glTexParameteri(textType, _ope, _fil); checkError();
 		}
 
-		inline GLenum getType() const { return this->textType; };
+		inline GLenum getType() const noexcept { return this->textType; };
 
-		inline int glCode() const { return this->textureCode; };
+		inline int glCode() const noexcept { return this->textureCode; };
 	};
 
 	template <GLenum _textType>
-	concept is_texture_support_demension = _textType == GL_TEXTURE_1D || _textType == GL_TEXTURE_2D || _textType == GL_TEXTURE_3D;
+	concept is_texture_support_demension = _textType == GL_TEXTURE_1D || _textType == GL_TEXTURE_2D || _textType == GL_TEXTURE_3D || _textType == GL_TEXTURE_CUBE_MAP;
 	
 	template <auto i,auto j>
 	concept is_same = i == j;
@@ -431,8 +453,8 @@ namespace glExt {
 			glGenerateMipmap(GL_TEXTURE_2D); checkError();
 		};
 
-		inline void loadFromImage(const image& _image, GLenum colorRange = GL_RGB, GLenum stroageRange = GL_RGB, unsigned level = 0, GLenum stroageType = GL_UNSIGNED_BYTE, bool unpackalign = false) {
-			glPixelStorei(GL_UNPACK_ALIGNMENT, unpackalign);
+		inline void loadFromImage(const image& _image, GLenum colorRange = GL_RGB, GLenum stroageRange = GL_RGB, unsigned level = 0, GLenum stroageType = GL_UNSIGNED_BYTE, int unpackalign = 0) {
+			glPixelStorei(GL_UNPACK_ALIGNMENT, unpackalign ? unpackalign : _image.getNrChannel());
 			checkError();
 			this->generate(_image.getData(), _image.getWidth(), _image.getHeight(), colorRange, stroageRange, level, stroageType);
 		}
@@ -490,6 +512,8 @@ namespace glExt {
 			down,
 			left,
 			right,
+			leftfall,		// 左倒
+			rightfall,		// 右倒
 		};
 
 		enum class relativeFace {
@@ -546,15 +570,7 @@ namespace glExt {
 
 		using moveHandlerSet = std::vector<moveHandler>;
 
-		//virtual void move(glm::vec3) = 0;
-		//virtual glm::mat4 getLookAt() const = 0;
-		//virtual void usePerspective(bool) = 0;
-		///// <summary>
-		///// 获取主要面
-		///// </summary>
-		///// <returns>主要面</returns>
-		//virtual face getMajorFace() const = 0;
-		//// virtual eulars turnUpVertor(glm::vec3 newUp) = 0;
+		virtual inline glm::vec3 getPos() const noexcept;
 	};
 
 	class fpsCamera:public camera {
@@ -624,8 +640,8 @@ namespace glExt {
 			else _pos = _target - (useNormalize ? glm::normalize(lookway) : lookway);
 		}
 
-		inline glm::vec3 pos() const { return this->_pos; };
-		inline glm::vec3 target() const { return this->_target; };
+		inline glm::vec3 getPos() const noexcept { return this->_pos; };
+		inline glm::vec3 target() const noexcept { return this->_target; };
 		inline glm::vec3 getRelative() const { return this->_target - this->_pos; };
 
 		inline void movePos(glm::vec3 way) { _pos += way; }
@@ -673,7 +689,7 @@ namespace glExt {
 		std::queue<_ipath> _path;
 		static float _inset_ease(float cur,float start,float change,float duration);
 	public:
-		float MouseSensitivity = 0.001f;
+		float MouseSensitivity = 0.002f;
 		easeFunc<float> sizer = _inset_ease;
 
 		QuatCamera(glm::vec3 initialPos = glm::vec3(0.0f,0.0f,0.0f), glm::vec3 initialUp = glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3 initialRight = glm::vec3(1.0f, 0.0f, 0.0f));
@@ -682,11 +698,11 @@ namespace glExt {
 		void setQuatBetweenVecs(glm::vec3 _from, glm::vec3 _to);
 		static rotate_raw getRotate(glm::vec3 _from, glm::vec3 _to);
 
-		inline glm::vec3 getUp() const;
-		inline glm::vec3 getRight() const;
+		inline glm::vec3 getUp() const noexcept;
+		inline glm::vec3 getRight() const noexcept;
 
-		inline glm::vec3 getPos() const;
-		inline void setPos(glm::vec3 pos);
+		inline glm::vec3 getPos() const noexcept;
+		inline void setPos(glm::vec3 pos) noexcept;
 		inline glm::vec3 getFront();
 		inline glm::mat4 getLookAt();
 		
@@ -726,6 +742,26 @@ namespace glExt {
 
 
 	};
+
+	template <>
+	class extTexture<GL_TEXTURE_CUBE_MAP> :public texture {
+	public:
+		inline extTexture() :texture(GL_TEXTURE_CUBE_MAP) {};
+		inline void generate(camera::axis axis, const void* data, unsigned width, unsigned height, GLenum colorRange, GLenum stroageRange, unsigned level = 0, GLenum stroageType = GL_UNSIGNED_BYTE) {
+			this->bind();
+			glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + int(axis), level, colorRange, width, height, 0, stroageRange, stroageType, data);
+			checkError();
+		};
+
+		inline void loadFromImage(camera::axis axis, const image& _image, GLenum colorRange = GL_RGB, GLenum stroageRange = GL_RGB, unsigned level = 0, GLenum stroageType = GL_UNSIGNED_BYTE, int unpackalign = 4) {
+			glPixelStorei(GL_UNPACK_ALIGNMENT, unpackalign);
+			checkError();
+			this->generate(axis, _image.getData(), _image.getWidth(), _image.getHeight(), colorRange, stroageRange, level, stroageType);
+		}
+	};
+	using texture_Cube = extTexture<GL_TEXTURE_CUBE_MAP>;
 }
 
+#pragma warning(default:26495)
 #include "glext.hpp"
+

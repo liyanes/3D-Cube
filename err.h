@@ -33,5 +33,6 @@ namespace glExt {
 		using glImageLoadFailed = glException<0xC005>;
 		using glOutofRange = glException<0xC006>;
 		using glNotRegerister = glException<0xC007>;
+		using glFontLoadFailed = glException<0xC008>;
 	};
 }

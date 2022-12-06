@@ -2,6 +2,7 @@
 #include "glext.h"
 #include <array>
 #include <queue>
+#pragma warning(disable:26495)
 
 /// <summary>
 /// 简单版本的Cube生成器
@@ -290,6 +291,7 @@ namespace mycube {
 
 		using paintEachFunc = void(*)(glExt::program& _pro,std::vector<singleCube*>::const_iterator iter,unsigned faceIndex, glExt::vertexArray[6]);
 		void paintEach(paintEachFunc func);
+		void paintEach(paintEachFunc func, bool useTexture);
 
 		// axis轴 从0->level-1找depth
 		std::vector<singleCube*> getCubes(axis _axis,unsigned depth);
@@ -426,6 +428,7 @@ namespace mycube::cubeSolver {
 		inline bool test(placeholder holder, face color);
 	};
 
+	class solutionFaceMap;
 	struct facePlaceHolder {
 		colorPlaceholder cholder;
 
@@ -435,21 +438,100 @@ namespace mycube::cubeSolver {
 		bool match(const faceMap&,const std::vector<std::vector<placeholder>*>&);
 
 		// 匹配所有面上的颜色, 第一的参数是 faceMap,第二个参数是面上每个值对于的 placeHolder
-		// 该操作不会尝试旋转面,故而只匹配一个方向
+		// 
 		// 匹配成功将返回faceMap,未成功则 throw
 		faceMap matchAll(const faceMap&, const std::vector<std::vector<placeholder>*>&);
 
 		// 匹配面上的颜色, 第一个参数是 faceMap,第二个参数是面上每个值对于的 placeHolder
-		// 该操作不会尝试旋转面,故而只匹配一个方向
+		// 
 		// 匹配成功将返回 true ,且修改 _matchMap 为对应的值,反则未 false
 		bool matchAll(const faceMap&, const std::vector<std::vector<placeholder>*>&, _Out_writes_bytes_all_(sizeof(faceMap)) faceMap* _matchMap);
 	};
 
+	class solutionFaceLine;
+	class solutionFaceMap {
+	public:
+		struct singleFaceData {
+			face srcFace, nowFace;
+			inline bool operator==(const singleFaceData& _right);
+			inline bool operator!=(const singleFaceData& _right);
+		};
+	private:
+		// 左下为起点,第一维是横轴
+		singleFaceData* _data;
+	public:
+		const unsigned level;
+		solutionFaceMap(unsigned level);
+		solutionFaceMap(const faceMap&);
+		~solutionFaceMap();
+
+		inline singleFaceData* data();
+
+		// 旋转单次 : 顺/逆时针
+		void rotateSingle(bool clockwise);
+		solutionFaceMap getRotateSingle(bool clockwise);
+		// 旋转到反向面
+		void rotateBack();
+		solutionFaceMap getRotateBack();
+		// 旋转 指定时针 次数
+		void rotate(unsigned times, bool clockwise);
+
+		inline solutionFaceLine operator[](unsigned);
+		inline const solutionFaceLine operator[](unsigned) const;
+		inline solutionFaceLine getLine(unsigned,bool);
+
+		friend class solutionFaceLine;
+	};
+
+	class solutionFaceLine {
+		solutionFaceMap& _inmap;
+		unsigned _inwline;
+		bool vertical;
+	protected:
+	struct _iter_end_flag{unsigned flag;};
+	public:
+		inline solutionFaceLine(solutionFaceMap&, unsigned);
+		inline solutionFaceLine(solutionFaceMap&, unsigned,bool);
+
+		class iterator {
+			solutionFaceLine& _in;
+			unsigned cur;
+		public:
+			inline iterator(solutionFaceLine& _in);
+			inline operator solutionFaceMap::singleFaceData& ();
+			inline solutionFaceMap::singleFaceData& operator*();
+			inline const iterator& operator++(int);
+			inline iterator& operator++();
+			inline const iterator& operator--(int);
+			inline iterator& operator--();
+			inline bool operator==(const iterator& _right) const;
+			inline bool operator==(const _iter_end_flag& _right) const;
+			inline unsigned getCurrentIndex() const;
+		};
+
+		inline iterator begin();
+		inline _iter_end_flag end();
+
+		inline solutionFaceMap::singleFaceData& operator[](unsigned index);
+		//inline const solutionFaceMap::singleFaceData& operator[](unsigned index) const;
+		inline bool operator==(solutionFaceLine& _right);
+	};
+
+
+
 	class solution {
 
-		std::array<faceMap, 6> _maps;
+		// 按照x+(y+),x-(y-),y+(z+),y-(z-),z+(x+),z-(x-)排序
+		solutionFaceMap _maps[6];
+		inline static unsigned _mapIndex(glExt::camera::face);
+		inline static glExt::camera::face _mapIndex(unsigned);
+		// 内置的初始化函数,需要初始化后修改变量
+		inline solution(unsigned level);
 	public:
+		const unsigned level;
+		solution(Cube&);
 
+		solution getRotated(glExt::camera::faceRotate rotate);
 	};
 
 	class solver {
@@ -668,3 +750,99 @@ inline bool mycube::cubeSolver::colorPlaceholder::test(placeholder holder, face 
 	}
 	return false;
 }
+
+namespace mycube::cubeSolver {
+	inline solutionFaceLine::solutionFaceLine(solutionFaceMap& _from, unsigned _inwline) :
+		_inmap(_from), _inwline(_inwline),vertical(false) {}
+	inline solutionFaceLine::solutionFaceLine(solutionFaceMap& _from, unsigned _inwline,bool ver) :
+		_inmap(_from), _inwline(_inwline),vertical(ver) {}
+
+	inline solutionFaceLine::iterator::iterator(solutionFaceLine& _from) : 
+		_in(_from), cur(0) {};
+	inline solutionFaceLine::iterator::operator solutionFaceMap::singleFaceData& (){
+		return this->_in.vertical ? this->_in._inmap._data[this->_in._inwline * this->_in._inmap.level + this->cur] : 
+			this->_in._inmap._data[this->cur * this->_in._inmap.level + this->_in._inwline];
+	};
+	inline solutionFaceMap::singleFaceData& solutionFaceLine::iterator::operator*(){
+		return (solutionFaceMap::singleFaceData&)(*this);
+	}
+	inline const solutionFaceLine::iterator& solutionFaceLine::iterator::operator++(int){
+		if (this->cur == this->_in._inmap.level) throw;
+		this->cur++;
+		return (*this);
+	}
+	inline solutionFaceLine::iterator& solutionFaceLine::iterator::operator++() {
+		if (this->cur == this->_in._inmap.level) throw;
+		this->cur++;
+		return (*this);
+	}
+	inline const solutionFaceLine::iterator& solutionFaceLine::iterator::operator--(int){
+		if (this->cur == 0) throw;
+		this->cur--;
+		return (*this);
+	}
+	inline solutionFaceLine::iterator& solutionFaceLine::iterator::operator--() {
+		if (this->cur == 0) throw;
+		this->cur--;
+		return (*this);
+	}
+	inline bool solutionFaceLine::iterator::operator==(const iterator& _right) const{
+		return (&this->_in == &_right._in && this->cur == _right.cur);
+	}
+	inline bool solutionFaceLine::iterator::operator==(const _iter_end_flag& _right) const{
+		return this->cur == _right.flag;
+	}
+	inline solutionFaceLine::iterator solutionFaceLine::begin(){
+		return iterator(*this);
+	}
+	inline solutionFaceLine::_iter_end_flag solutionFaceLine::end(){
+		return {this->_inmap.level};
+	}
+
+	inline solutionFaceMap::singleFaceData& solutionFaceLine::operator[](unsigned index){
+		return this->vertical ? this->_inmap._data[this->_inwline * this->_inmap.level + index] : 
+			this->_inmap._data[index * this->_inmap.level + this->_inwline];
+	}
+	inline bool solutionFaceLine::operator==(solutionFaceLine& _right){
+		for (auto i = this->begin();i!=this->end();i++){
+			if (*i != _right[i.getCurrentIndex()]) return false; 
+		}
+		return true;
+	}
+	inline bool solutionFaceMap::singleFaceData::operator==(const singleFaceData& _right){
+		return this->nowFace == _right.nowFace && this->srcFace == _right.srcFace;
+	}
+	inline bool solutionFaceMap::singleFaceData::operator!=(const singleFaceData& _right){
+		return !(*this == _right);
+	}
+	inline solutionFaceMap::solutionFaceMap(unsigned level):
+		_data(new singleFaceData[level*level]),level(level)
+		{}
+	inline solutionFaceMap::~solutionFaceMap(){delete[] _data;}
+	inline solutionFaceMap::singleFaceData* solutionFaceMap::data(){return this->_data;}
+	inline solutionFaceLine solutionFaceMap::operator[](unsigned _index){
+		return solutionFaceLine(*this,_index);
+	}
+	inline const solutionFaceLine solutionFaceMap::operator[](unsigned _index) const{
+		return this->operator[](_index);
+	}
+	inline solutionFaceLine solutionFaceMap::getLine(unsigned _index,bool _vertical){
+		return solutionFaceLine(*this,_index,_vertical);
+	}
+	inline unsigned solution::_mapIndex(glExt::camera::face _face){
+		return (unsigned)_face;
+	}
+	inline glExt::camera::face solution::_mapIndex(unsigned _face){
+		return (glExt::camera::face)_face;
+	}
+	inline solution::solution(unsigned level):
+		_maps{solutionFaceMap(level),
+		solutionFaceMap(level),
+		solutionFaceMap(level),
+		solutionFaceMap(level),
+		solutionFaceMap(level),
+		solutionFaceMap(level)},level(level){}
+	
+}
+
+#pragma warning(default:26495)
