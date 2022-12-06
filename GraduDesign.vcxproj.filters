@@ -19,6 +19,9 @@
     <Filter Include="头文件\GLLibrary">
       <UniqueIdentifier>{0a1bd85e-5433-477d-81b1-a5cc342bb52c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Git">
+      <UniqueIdentifier>{7196a83f-9c96-4e76-a8fc-0abe309d7429}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -31,6 +34,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="cube.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="font.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="config.c">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -47,6 +56,15 @@
     <ClInclude Include="glext.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="font.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="list.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="config.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="awesomeface.png">
@@ -61,5 +79,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="AllCodeMap.dgml" />
+    <None Include=".gitignore">
+      <Filter>Git</Filter>
+    </None>
+    <None Include="README.md">
+      <Filter>Git</Filter>
+    </None>
   </ItemGroup>
 </Project>

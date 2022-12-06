@@ -1,37 +1,47 @@
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <Windows.h>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 #include "glext.h"
 #include "cube.h"
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
+#include <mmsystem.h>
 #pragma comment(lib,"winmm.lib")
+
+#include "config.h"
 
 using namespace glExt;
 using namespace std;
 using namespace mycube;
 using namespace mycube::cubeSolver;
 
-float pitch = 0.0f, yaw = -90.0f;
-
 double lastClickX, lastClickY;
 double lastClickTime = 0.0;
 double lastX, lastY ,fov = 45.0f;
 bool leftkeyPress = false;
 float distance = 10.0f;
-const double sensitivity = 0.0005f;
-const float spinRate = 4.0f;
 int window_width = 1920, window_height = 1920;
 
-int posView,posProj,posViewPos;
+struct {
+    unsigned long defaultLevel;
+    float spinRate;
+    bool useTexture;
+    std::string textures[6];
+    std::string backgroundMusic;
+    bool useRGBA;
+} thisConfig;
+
+//int posView, posProj;
+int posProAndView,posTInvModel;
+int posViewPos;
 glm::mat4 view,projection;
 
 float rotate_rate = 3.5f;
-constexpr auto getRateTime = [](float rotate_rate) ->float {
+constexpr auto getRateTime = []() ->float {
     return glm::radians(90.0f) / rotate_rate;
 };
 
@@ -47,13 +57,13 @@ mycube::Cube* _tcube;
 mycube::cubeSolver::solver* solver;
 program* _tprogram;
 window* _twindow;
+texture_2D* texts;
 
 void mouseCallback(window& _window, int button, int action, int mode) {
-    auto curpos = _window.getCursorPos();
-    if (button == 0 && action == 1) {
-        lastClickTime = glfwGetTime();
-    }
-    if (button == 0 && action == 0 && glfwGetTime() - lastClickTime < 0.1) {
+    auto _curpos = _window.getCursorPos();
+    crood<int> curpos = { (int)_curpos.x,(int)_curpos.y };
+    double posMove = (_window.getCursorPos() - glExt::crood<double>{lastClickX, lastClickY}).length2();
+    if (button == 0 && action == 0 && (posMove==0.0 || glfwGetTime() - lastClickTime <= 0.2)) {
         lastClickTime = 0;
         auto curpos = _twindow->getCursorPos();
         const singleCubeFace* _face = ::solver->getCurrentPickFace(*_twindow, (int)curpos.x, (int)(window_height - curpos.y), projection * view);
@@ -89,6 +99,9 @@ void mouseCallback(window& _window, int button, int action, int mode) {
     if (action) {
         lastClickX = curpos.x;
         lastClickY = curpos.y;
+    }
+    if (button == 0 && action == 1) {
+        lastClickTime = glfwGetTime();
     }
 }
 
@@ -127,8 +140,7 @@ void frameBufferSizeCallback(window&, int width, int height) {
 void keyCallback(window& _win, int key, int scancode, int action, int mods) {
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9 && (mods & GLFW_MOD_CONTROL && !(mods & GLFW_MOD_ALT) && !(mods & GLFW_MOD_SHIFT))) {
         _tprogram->use();
-        //delete _tcube;
-        //_tcube = new mycube::Cube(key - GLFW_KEY_0, 2.0f, *_tprogram);
+        _tcube->~Cube();
         new (_tcube)mycube::Cube(key - GLFW_KEY_0, 2.0f, *_tprogram); 
         _tcube->frameCallback = [](Cube::animateFrame& _frame)->bool {
             if (!PlaySound(L"resources\\rotate.wav", 0, SND_ASYNC | SND_FILENAME)) {
@@ -161,6 +173,9 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
         _tcube->frameClear();
         return;
     }
+    if (key == GLFW_KEY_F3 && action == GLFW_PRESS){
+        thisConfig.useTexture = !thisConfig.useTexture;
+    }
     if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
         _twindow->setFullScreen(!_twindow->isFullScreen());
     }
@@ -168,22 +183,22 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
     
     if (!(enableLevel3KeyMap && _tcube->getLevel() == 3)) {
         if (key == GLFW_KEY_W && action == GLFW_PRESS) {
-            _camera.requireRotate({ _camera.getRight(),glm::radians(-90.f) }, getRateTime(rotate_rate));
+            _camera.requireRotate({ _camera.getRight(),glm::radians(-90.f) }, getRateTime());
         }
         else if (key == GLFW_KEY_S && action == GLFW_PRESS) {
-            _camera.requireRotate({ _camera.getRight(),glm::radians(90.f) }, getRateTime(rotate_rate));
+            _camera.requireRotate({ _camera.getRight(),glm::radians(90.f) }, getRateTime());
         }
         else if (key == GLFW_KEY_A && action == GLFW_PRESS) {
-            _camera.requireRotate({ _camera.getUp(),glm::radians(-90.f) }, getRateTime(rotate_rate));
+            _camera.requireRotate({ _camera.getUp(),glm::radians(-90.f) }, getRateTime());
         }
         else if (key == GLFW_KEY_D && action == GLFW_PRESS) {
-            _camera.requireRotate({ _camera.getUp(),glm::radians(90.f) }, getRateTime(rotate_rate));
+            _camera.requireRotate({ _camera.getUp(),glm::radians(90.f) }, getRateTime());
         }
         else if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
-            _camera.requireRotate({ _camera.getFront(),glm::radians(-90.f) }, getRateTime(rotate_rate));
+            _camera.requireRotate({ _camera.getFront(),glm::radians(-90.f) }, getRateTime());
         }
         else if (key == GLFW_KEY_E && action == GLFW_PRESS) {
-            _camera.requireRotate({ _camera.getFront(),glm::radians(90.f) }, getRateTime(rotate_rate));
+            _camera.requireRotate({ _camera.getFront(),glm::radians(90.f) }, getRateTime());
         }
 
         int presssdNum = numPressed();
@@ -210,11 +225,11 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else {
                 if (!shifted) {
                     ::solver->frameRequire(solver::relativeAxis::right, 0, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::down, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::down, getRateTime());
                 }
                 else {
                     ::solver->frameRequire(solver::relativeAxis::left, 2, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::up, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::up, getRateTime());
                 }
             }
             break;
@@ -226,11 +241,11 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else {
                 if (!shifted) {
                     ::solver->frameRequire(solver::relativeAxis::left, 0, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::up, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::up, getRateTime());
                 }
                 else {
                     ::solver->frameRequire(solver::relativeAxis::right, 2, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::down, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::down, getRateTime());
                 }
             }
             break;
@@ -242,11 +257,11 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else {
                 if (!shifted) {
                     ::solver->frameRequire(solver::relativeAxis::up, 0, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::right, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::right, getRateTime());
                 }
                 else {
                     ::solver->frameRequire(solver::relativeAxis::down, 2, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::left, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::left, getRateTime());
                 }
             }
             break;
@@ -258,11 +273,11 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else {
                 if (!shifted) {
                     ::solver->frameRequire(solver::relativeAxis::down, 0, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::left, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::left, getRateTime());
                 }
                 else {
                     ::solver->frameRequire(solver::relativeAxis::up, 2, rotate_rate);
-                    ::solver->rotateToFace(faceRotate::right, getRateTime(rotate_rate));
+                    ::solver->rotateToFace(faceRotate::right, getRateTime());
                 }
             }
             break;
@@ -274,11 +289,11 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else {
                 if (!shifted) {
                     ::solver->frameRequire(solver::relativeAxis::back, 0, rotate_rate);
-                    _camera.requireRotate({camera::getMajorFaceVec(_camera.getFront()),glm::radians(-90.f)}, getRateTime(rotate_rate));
+                    _camera.requireRotate({camera::getMajorFaceVec(_camera.getFront()),glm::radians(-90.f)}, getRateTime());
                 }
                 else {
                     ::solver->frameRequire(solver::relativeAxis::front, 2, rotate_rate);
-                    _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(90.f) }, getRateTime(rotate_rate));
+                    _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(90.f) }, getRateTime());
                 }
             }
             break;
@@ -290,11 +305,11 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else {
                 if (!shifted) {
                     ::solver->frameRequire(solver::relativeAxis::front, 0, rotate_rate);
-                    _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(90.f) }, getRateTime(rotate_rate));
+                    _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(90.f) }, getRateTime());
                 }
                 else {
                     ::solver->frameRequire(solver::relativeAxis::back, 2, rotate_rate);
-                    _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(-90.f) }, getRateTime(rotate_rate));
+                    _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(-90.f) }, getRateTime());
                 }
             }
             break;
@@ -303,20 +318,41 @@ void keyCallback(window& _win, int key, int scancode, int action, int mods) {
             else ::solver->frameRequire(solver::relativeAxis::left, 1, rotate_rate);
             break;
         case GLFW_KEY_X:
-            if (!shifted) ::solver->rotateToFace(faceRotate::down, getRateTime(rotate_rate));
-            else ::solver->rotateToFace(faceRotate::up, getRateTime(rotate_rate));
+            if (!shifted) ::solver->rotateToFace(faceRotate::down, getRateTime());
+            else ::solver->rotateToFace(faceRotate::up, getRateTime());
             break;
         case GLFW_KEY_Y:
-            if (!shifted) ::solver->rotateToFace(faceRotate::right, getRateTime(rotate_rate));
-            else ::solver->rotateToFace(faceRotate::left, getRateTime(rotate_rate));
+            if (!shifted) ::solver->rotateToFace(faceRotate::right, getRateTime());
+            else ::solver->rotateToFace(faceRotate::left, getRateTime());
             break;
         case GLFW_KEY_Z:
-            if (!shifted) _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(-90.f) }, getRateTime(rotate_rate));
-            else _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(90.f) }, getRateTime(rotate_rate));
+            if (!shifted) _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(-90.f) }, getRateTime());
+            else _camera.requireRotate({ camera::getMajorFaceVec(_camera.getFront()),glm::radians(90.f) }, getRateTime());
             break;
         }
     }
 
+}
+
+bool loadConfig() {
+    ct_ST_config* config = NULL;
+    if (ct_config_load("config.conf", &config)) {
+        return false;
+    }
+    auto cubeSect = ct_config_section_find(config, "cube");
+    thisConfig.defaultLevel = std::strtoul(ct_config_variable_find(cubeSect, "defaultLevel")->value,NULL,10);
+    thisConfig.spinRate = std::strtof(ct_config_variable_find(cubeSect, "spinRate")->value, NULL);
+    thisConfig.useTexture = std::strtol(ct_config_variable_find(cubeSect, "useTexture")->value, NULL, 10);
+    if (thisConfig.useTexture) {
+        for (unsigned i = 0; i < 6; i++) {
+            stringstream ss;
+            ss << "textures" << i;
+            thisConfig.textures[i] = string(ct_config_variable_find(cubeSect, ss.str().c_str())->value);
+        }
+        thisConfig.useRGBA = std::strtol(ct_config_variable_find(cubeSect, "useRGBA")->value, NULL, 10);
+    }
+    thisConfig.backgroundMusic = ct_config_variable_find(cubeSect, "bgm")->value;
+    return true;
 }
 
 #if defined(_CONSOLE) && _CONSOLE
@@ -328,19 +364,17 @@ int WINAPI WinMain(
     _In_ LPSTR pCmdLine,
     _In_ int nCmdShow) {
 #endif
-    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* pExptInfo)->long {
-        wstringstream ss(L"·¢ÉúÎ´²¶»ñµÄ´íÎó:");
-        ss << "´íÎóºÅ:" << pExptInfo->ExceptionRecord->ExceptionCode << "\n";
-        ss << "´íÎóÎ»ÖÃ:" << pExptInfo->ExceptionRecord->ExceptionAddress << "\n";
-        ss << "´íÎóÐÅÏ¢" << pExptInfo->ExceptionRecord->ExceptionInformation << "\n";
-        MessageBox(NULL,ss.str().c_str(), L"´íÎó", MB_OK | MB_ICONERROR);
-        return EXCEPTION_EXECUTE_HANDLER;
-        });
     srand((unsigned)time(NULL));
+
+    if (!loadConfig()) {
+        MessageBox(NULL, L"ÅäÖÃÎÄ¼þ¶ÁÐ´´íÎó", L"´íÎó", MB_ICONERROR | MB_OK);
+        return -1;
+    };
+    rotate_rate = thisConfig.spinRate;
 
     initializer init;
 
-	window _window = window(window_width, window_height, "Test"/*,true,glfwGetMonitors(&count)[0]*/);
+	window _window = window(window_width, window_height, "3D-Cube"/*,true,glfwGetMonitors(&count)[0]*/);
     _window.setCursorCallback(cursorCallback);
     _window.setMouseCallback(mouseCallback);
     _window.setScrollCallback(scrollCallback);
@@ -351,21 +385,116 @@ int WINAPI WinMain(
 
     program _program;
 
-    _tcube = new mycube::Cube(3, 2.0f,_program);
+    _tcube = new mycube::Cube(thisConfig.defaultLevel, 2.0f,_program);
     _tprogram = &_program;
 
-    std::array<texture_2D,6> _texts;
-    std::array<texture*, 6> _textindexs;
+
+    program _sprogram("#version 330 core\n"
+        "layout(location = 0) in vec3 aPos;"
+        "out vec3 TexCoords;"
+        "uniform mat4 stdmat;"
+
+        "void main()"
+        "{"
+        "TexCoords = aPos;"
+        "gl_Position = stdmat * vec4(aPos, 1.0);"
+        "}",
+        "#version 330 core\n"
+        "out vec4 FragColor;"
+        "in vec3 TexCoords;"
+        "uniform samplerCube skybox;"
+        "void main()"
+        "{"
+        "FragColor = texture(skybox, TexCoords);"
+        "}");
+    _sprogram.use();
+    _sprogram.uniform(_sprogram.getUniformPos("skybox"), 0);
+    texture _world(GL_TEXTURE_CUBE_MAP);
+    texts = thisConfig.useTexture ? new texture_2D[6] : NULL;
+    std::array<texture*, 6> _textsmap;
     for (unsigned i = 0; i < 6; i++) {
-        _texts[i].setSurrounding(texture::wrap_s, texture::surr_border);
-        _texts[i].setSurrounding(texture::wrap_t, texture::surr_border);
-        _texts[i].setFilter(texture::ope_min, texture::fil_linear);
-        _texts[i].setFilter(texture::ope_mag, texture::fil_linear);
-        stringstream ss;
-        ss << "resources\\" << i + 6 << ".jpg\0";
-        _texts[i].loadFromImage(image(ss.str().c_str(), true),GL_RGB,GL_RGB,0,GL_UNSIGNED_BYTE,true);
-        _textindexs[i] = &_texts[i];
+        _textsmap[i] = texts + i;
     }
+    _world.bind();
+    {
+        image _image("resources\\skybox\\right.jpg", false);
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X, 0, GL_RGB, _image.getWidth(), _image.getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, _image.getData());
+        _image = image("resources\\skybox\\left.jpg");
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + 1, 0, GL_RGB, _image.getWidth(), _image.getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, _image.getData());
+        _image = image("resources\\skybox\\top.jpg");
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + 2, 0, GL_RGB, _image.getWidth(), _image.getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, _image.getData());
+        _image = image("resources\\skybox\\bottom.jpg");
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + 3, 0, GL_RGB, _image.getWidth(), _image.getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, _image.getData());
+        _image = image("resources\\skybox\\front.jpg");
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + 4, 0, GL_RGB, _image.getWidth(), _image.getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, _image.getData());
+        _image = image("resources\\skybox\\back.jpg");
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + 5, 0, GL_RGB, _image.getWidth(), _image.getHeight(), 0, GL_RGB, GL_UNSIGNED_BYTE, _image.getData());
+
+        if (texts) {
+            for (unsigned i = 0; i < 6; i++) {
+                texts[i].loadFromImage(image(thisConfig.textures[i].c_str()),thisConfig.useRGBA ? GL_RGBA : GL_RGB, thisConfig.useRGBA ? GL_RGBA : GL_RGB,0,GL_UNSIGNED_BYTE);
+                texts[i].setFilter(texture::ope_mag, texture::fil_linear);
+                texts[i].setFilter(texture::ope_min, texture::fil_linear);
+                texts[i].setSurrounding(texture::wrap_r, texture::surr_edge);
+                texts[i].setSurrounding(texture::wrap_s, texture::surr_edge);
+                texts[i].setSurrounding(texture::wrap_t, texture::surr_edge);
+            }
+        }
+    }
+    _world.setFilter(texture::ope_mag, texture::fil_linear);
+    _world.setFilter(texture::ope_min, texture::fil_linear);
+    _world.setSurrounding(texture::wrap_r, texture::surr_edge);
+    _world.setSurrounding(texture::wrap_s, texture::surr_edge);
+    _world.setSurrounding(texture::wrap_t, texture::surr_edge);
+    vertexArray _arr;
+    float skyboxVertices[] = {
+        // positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f
+    };
+    _arr.setData(sizeof(skyboxVertices),skyboxVertices,GL_STATIC_DRAW,3*sizeof(float));
+    _arr.setVertexAttributes({
+            {0,3,GL_FLOAT,GL_FALSE,3 * sizeof(float),0}
+        });
 
     _tprogram->use();
 
@@ -384,23 +513,26 @@ int WINAPI WinMain(
     };
 
     _tprogram->use();
-    //posModel = _tprogram->getUniformPos("model");
-    posView = _tprogram->getUniformPos("view");
-    posProj = _tprogram->getUniformPos("projection");
-    posViewPos = _tprogram->getUniformPos("viewPos");
 
-    //model = glm::rotate(glm::mat4(1), glm::radians(-55.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+    posProAndView = _tprogram->getUniformPos("proAndView");
+    posViewPos = _tprogram->getUniformPos("viewPos");
+    posTInvModel = _tprogram->getUniformPos("tinvModel");
+
     view = glm::translate(glm::mat4(1), glm::vec3(0.0f, 0.0f, -10.0f));
     projection = glm::perspective(glm::radians((float)fov), 1.0f, 0.1f, 100.0f);
     _window.fitViewport();
 
-    //_tprogram->uniform(posModel, model);
-    _tprogram->uniform(posView, view);
-    _tprogram->uniform(posProj, projection);
     _tprogram->uniform(_tprogram->getUniformPos("lightColor"), 1.0f, 1.0f, 1.0f);
 
     glfwSwapInterval(1);
     enableDepthTest();
+    stringstream bgmope("open ");
+    bgmope << thisConfig.backgroundMusic;
+    mciSendStringA(bgmope.str().c_str(), NULL, 0, 0);
+    bgmope.clear();
+    bgmope << "play ";
+    bgmope << thisConfig.backgroundMusic;
+    mciSendStringA(bgmope.str().c_str(), NULL, 0, 0);
 
     while (_window.running()) {
         if (_window.getKey(GLFW_KEY_ESCAPE)) {
@@ -410,36 +542,65 @@ int WINAPI WinMain(
         }
         
         glExt::clearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        
         depthTest();
 
-        _tprogram->use();
         _solver.changeWorkFace();
         _camera.checkFrame();
         _tcube->frameCheck();
-        //view = _camera.getView();
         view = _camera.getLookAt();
         projection = glm::perspective(glm::radians((float)fov), (float)window_width / window_height, 0.1f, 100.0f);
-        _tprogram->uniform(posView, view);
-        _tprogram->uniform(posProj, projection);
+
+        glDepthMask(GL_FALSE);
+        _sprogram.use();
+        _world.bind();
+        textureUnit::active(0);
+        glm::quat tmpquat =  glm::quat(view);
+        tmpquat.x = 0.0f;
+        tmpquat.z = 0.0f;
+        tmpquat = glm::normalize(tmpquat);
+        _sprogram.uniform(_sprogram.getUniformPos("stdmat"), projection * glm::toMat4(tmpquat));
+        _arr.draw(GL_TRIANGLES);
+        glDepthMask(GL_TRUE);
+
+        _tprogram->use();
+        _tprogram->uniform(posProAndView, projection * view);
         //_tprogram->uniform(posViewPos, _camera.pos());
         _tprogram->uniform(posViewPos, _camera.getPos());
 
         _tprogram->uniform(_tprogram->getUniformPos("lightPos"), 6.0f * (float)sin(glfwGetTime()), 3.0f, 6.0f * (float)cos(glfwGetTime()));
 
         if (!_pickface)
-            _tcube->paint(/*, _textindexs*/);
+            if (thisConfig.useTexture) _tcube->paint(_textsmap);
+            else _tcube->paint();
         else _tcube->paintEach([](program& _pro, std::vector<singleCube*>::const_iterator i, unsigned faceIndex, glExt::vertexArray* _arr) {
+            int posTexture = _pro.getUniformPos("texture0");
             if (*i == _pickface->inSingleCube) {
-                int posModel = _pro.getUniformPos("model");
-                _pro.uniform(posModel, ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate * glm::scale(glm::mat4(1.0f),glm::vec3(1.05f)));
-                _arr[faceIndex].draw(GL_TRIANGLES);
+                int posModel = _pro.getUniformPos("model"),postinvModel = _pro.getUniformPos("tinvModel");
+                glm::mat4 model = ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate * glm::scale(glm::mat4(1.0f), glm::vec3(1.05f));
+                _pro.uniform(posModel, model);
+                _pro.uniform(postinvModel, glm::transpose(glm::inverse(model)));
             }
-            else {
-                _arr[faceIndex].draw(GL_TRIANGLES);
+            if (thisConfig.useTexture) {
+                if ((*i)->faces[faceIndex].outShow) {
+                    _pro.uniform(_pro.getUniformPos("useTexture"), 1);
+                    _pro.uniform(posTexture, 0);
+                    glExt::textureUnit::active(0);
+                    texts[faceIndex].bind();
+                }
+                else {
+                    _pro.uniform(_pro.getUniformPos("useTexture"), 0);
+                }
             }
-            });
+            else _pro.uniform(_pro.getUniformPos("useTexture"), 0);;
+            _arr[faceIndex].draw(GL_TRIANGLES);
+            },(bool)texts);
 
         _window.handleSysEvent();
+    }
+    delete _tcube;
+    if (texts) {
+        delete[] texts;
     }
 };
 

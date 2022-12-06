@@ -63,15 +63,17 @@ mycube::Cube::Cube(unsigned level,float size,glExt::program& useProgram):
 	size(size),
 	_program(useProgram) {
 	if (!useProgram.isLinked()) {
-		useProgram.attach(shader(GL_VERTEX_SHADER,
+		useProgram.attach(vertexShader(
 			"#version 330 core\n"
 			"layout (location = 0) in vec3 aPos;\n"
 			"layout (location = 1) in vec3 aNormal;\n"
 			"layout (location = 2) in vec3 aColor;\n"
 			"layout (location = 3) in vec2 aTexCoord;\n"
 			"uniform mat4 model;"
-			"uniform mat4 view;"
-			"uniform mat4 projection;"
+			"uniform mat4 proAndView;"
+			"uniform mat4 tinvModel;"
+			//"uniform mat4 view;"
+			//"uniform mat4 projection;"
 			"out vec2 TexCoord;"
 			"out vec3 color;\n"
 			"out vec3 normal;\n"
@@ -79,13 +81,14 @@ mycube::Cube::Cube(unsigned level,float size,glExt::program& useProgram):
 			"void main()\n"
 			"{\n"
 			"   FragPos = vec3(model * vec4(aPos ,1.0));"
-			"   gl_Position = projection * view * vec4(FragPos,1.0);\n"
+			//"   gl_Position = projection * view * vec4(FragPos,1.0);\n"
+			"   gl_Position = proAndView * vec4(FragPos,1.0);\n"
 			"   TexCoord = aTexCoord;"
 			"   color = aColor;"
-			"   normal = mat3(transpose(inverse(model))) * aNormal;\n"
+			//"   normal = mat3(transpose(inverse(model))) * aNormal;\n"
+			"   normal = mat3(tinvModel) * aNormal;\n"
 			"}"));
-		useProgram.attach(shader(GL_FRAGMENT_SHADER,
-
+		useProgram.attach(fragmentShader(
 			"#version 330 core\n"
 			"in vec2 TexCoord;\n"
 			"in vec3 color;\n"
@@ -101,7 +104,6 @@ mycube::Cube::Cube(unsigned level,float size,glExt::program& useProgram):
 			"uniform int useTexture;\n"
 			"void main()\n"
 			"{\n"
-			//"     FragColor = mix(texture(texture1,TexCoord),texture(texture2,TexCoord),0.2);\n"
 			// »·¾³¹âÕÕ
 			"   float ambientStrength = 0.3;"
 			"   vec3 ambient = ambientStrength * lightColor;"
@@ -219,9 +221,12 @@ void Cube::paint() {
 	int posPaint = _program.getUniformPos("usePaint");
 	int posModel = _program.getUniformPos("model");
 	int posTexture = _program.getUniformPos("useTexture");
+	int posTInvModel = _program.getUniformPos("tinvModel");
 	_program.uniform(posTexture, 0);
 	for (auto i = this->scubes.cbegin(); i != this->scubes.cend(); i++) {
-		_program.uniform(posModel, ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate);
+		glm::mat4 model = ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate;
+		_program.uniform(posModel, model);
+		_program.uniform(posTInvModel, glm::inverse(model),true);
 		for (unsigned index = 0; index < 6; index++) {
 			_program.uniform(posPaint, (*i)->faces[index].outShow);
 			_varray[index].draw(GL_TRIANGLES);
@@ -234,9 +239,32 @@ void Cube::paintEach(paintEachFunc func) {
 	int posPaint = _program.getUniformPos("usePaint");
 	int posModel = _program.getUniformPos("model");
 	int posTexture = _program.getUniformPos("useTexture");
+	int posTInvModel = _program.getUniformPos("tinvModel");
 	_program.uniform(posTexture, 0);
 	for (auto i = this->scubes.cbegin(); i != this->scubes.cend(); i++) {
-		_program.uniform(posModel, ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate);
+		glm::mat4 model = ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate;
+		_program.uniform(posModel, model);
+		_program.uniform(posTInvModel, glm::inverse(model), true);
+		for (unsigned index = 0; index < 6; index++) {
+			_program.uniform(posPaint, (*i)->faces[index].outShow);
+			//_varray[index].draw(GL_TRIANGLES);
+			func(_program, i, index, _varray);
+			_program.use();
+		}
+	}
+}
+
+void Cube::paintEach(paintEachFunc func,bool useTexture) {
+	_program.use();
+	int posPaint = _program.getUniformPos("usePaint");
+	int posModel = _program.getUniformPos("model");
+	int posTexture = _program.getUniformPos("useTexture");
+	int posTInvModel = _program.getUniformPos("tinvModel");
+	_program.uniform(posTexture, useTexture);
+	for (auto i = this->scubes.cbegin(); i != this->scubes.cend(); i++) {
+		glm::mat4 model = ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate;
+		_program.uniform(posModel, model);
+		_program.uniform(posTInvModel, glm::inverse(model), true);
 		for (unsigned index = 0; index < 6; index++) {
 			_program.uniform(posPaint, (*i)->faces[index].outShow);
 			//_varray[index].draw(GL_TRIANGLES);
@@ -251,9 +279,12 @@ void Cube::paint(std::array<glExt::texture*,6>& _texture) {
 	int posTexture = _program.getUniformPos("useTexture");
 	int posPaint = _program.getUniformPos("usePaint");
 	int posModel = _program.getUniformPos("model");
+	int posTInvModel = _program.getUniformPos("tinvModel");
 	_program.uniform(posTexture, 1);
 	for (auto i = this->scubes.cbegin(); i != this->scubes.cend(); i++) {
-		_program.uniform(posModel, ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate);
+		glm::mat4 model = ((*i)->useTimelyRotateMat ? (*i)->timelyRotateMat : (*i)->rotateMat) * (*i)->initTranslate;
+		_program.uniform(posModel, model);
+		_program.uniform(posTInvModel, glm::inverse(model), true);
 		for (unsigned index = 0; index < 6; index++) {
 			_program.uniform(posPaint, (*i)->faces[index].outShow);
 			_texture[index]->bind();
@@ -395,6 +426,7 @@ mycube::cubeSolver::faceMap::faceMap(mycube::Cube& cube, glExt::camera::face _fa
 		if (_ope.x) return 0;
 		if (_ope.y) return 1;
 		if (_ope.z) return 2;
+		throw;
 	};
 
 	glm::vec3 up = vec3FromFace(faceUp);
@@ -624,19 +656,21 @@ faceMap facePlaceHolder::matchAll(const faceMap& _map, const std::vector<std::ve
 	throw;
 }
 
+#pragma warning(disable:6101)
 bool facePlaceHolder::matchAll(const faceMap& _map, const std::vector<std::vector<placeholder>*>& _data, _Out_writes_bytes_all_(sizeof(faceMap)) faceMap* _matchMap) {
 	if (match(_map, _data)) {
-		memcpy(_matchMap, &_map, sizeof(_map));
+		new(_matchMap)faceMap(_map);
 		return true;
 	}
 	faceMap map1(_map);
 	face curup = map1.getUpFace();
 	for (int i = 0; i < 2; i++) {
 		map1.ratate(true);
-		if (match(_map, _data)) {
-			memcpy(_matchMap, &map1, sizeof(map1));
+		if (match(map1, _data)) {
+			new(_matchMap)faceMap(map1);
 			return true;
 		}
 	}
 	return false;
 }
+#pragma warning(default:6101)

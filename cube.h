@@ -2,6 +2,7 @@
 #include "glext.h"
 #include <array>
 #include <queue>
+#pragma warning(disable:26495)
 
 /// <summary>
 /// 简单版本的Cube生成器
@@ -290,6 +291,7 @@ namespace mycube {
 
 		using paintEachFunc = void(*)(glExt::program& _pro,std::vector<singleCube*>::const_iterator iter,unsigned faceIndex, glExt::vertexArray[6]);
 		void paintEach(paintEachFunc func);
+		void paintEach(paintEachFunc func, bool useTexture);
 
 		// axis轴 从0->level-1找depth
 		std::vector<singleCube*> getCubes(axis _axis,unsigned depth);
@@ -668,3 +670,6 @@ inline bool mycube::cubeSolver::colorPlaceholder::test(placeholder holder, face 
 	}
 	return false;
 }
+
+
+#pragma warning(default:26495)
